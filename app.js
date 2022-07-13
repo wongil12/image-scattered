@@ -3,12 +3,20 @@ window.addEventListener('load', () => {
   const verticalCount = 30;
   const horizontalCount = 50;
   const image = new ImageScattered(src, horizontalCount, verticalCount);
+
+  document.getElementById('spread').addEventListener('click', () => {
+    console.time('asdf');
+    image.startAction();
+    console.timeEnd('asdf');
+  });
 });
 
 const WHITE_SPACE = 50;
 
 class ImageScattered {
   constructor(src, horizontalCount, verticalCount) {
+    this.opacity = 1;
+
     this.horizontalCount = horizontalCount;
     this.verticalCount = verticalCount;
 
@@ -43,8 +51,8 @@ class ImageScattered {
   setImageSources() {
     const sources = [];
 
-    const unitWidth = this.iWidth / this.horizontalCount;
-    const unitHeight = this.iHeight / this.verticalCount;
+    const unitWidth = Math.round(this.iWidth / this.horizontalCount);
+    const unitHeight = Math.round(this.iHeight / this.verticalCount);
 
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
@@ -55,15 +63,22 @@ class ImageScattered {
     tempCtx.drawImage(this.image, 0, 0);
 
     for (let h = 0; h < this.horizontalCount; h++) {
-      sources[h] = [];
-
       for (let v = 0; v < this.verticalCount; v++) {
-        const sx = h * (this.iWidth / this.horizontalCount);
-        const sy = v * (this.iHeight / this.verticalCount);
+        const sx = Math.round(h * (this.iWidth / this.horizontalCount));
+        const sy = Math.round(v * (this.iHeight / this.verticalCount));
 
-        const imageData = tempCtx.getImageData(sx, sy, unitWidth + 2, unitHeight + 2);
+        const dx = Math.round(h * (this.iWidth / this.horizontalCount) + WHITE_SPACE / 2);
+        const dy = Math.round(v * (this.iHeight / this.verticalCount) + WHITE_SPACE / 2);
 
-        sources[h].push(imageData);
+        const imageData = tempCtx.getImageData(sx, sy, unitWidth, unitHeight);
+
+        const unitImage = new UnitImage(imageData);
+
+        unitImage.setImageSize({ width: unitWidth, height: unitHeight });
+
+        unitImage.setImagePosition({ x: dx, y: dy });
+
+        sources.push(unitImage);
       }
     }
 
@@ -71,20 +86,31 @@ class ImageScattered {
   }
 
   initialImage() {
-    const unitWidth = this.iWidth / this.horizontalCount - 4;
-    const unitHeight = this.iHeight / this.verticalCount - 4;
+    this.imageSources.forEach((unitImage) => {
+      this.ctx.putImageData(
+        unitImage.getImageData(),
+        unitImage.position.x,
+        unitImage.position.y,
+        0,
+        0,
+        unitImage.size.width,
+        unitImage.size.height,
+      );
+    });
+  }
 
-    for (let h = 0; h < this.horizontalCount; h++) {
-      for (let v = 0; v < this.verticalCount; v++) {
-        const sx = h * (this.iWidth / this.horizontalCount);
-        const sy = v * (this.iHeight / this.verticalCount);
-        const dx = Math.round(h * (this.iWidth / this.horizontalCount) + WHITE_SPACE / 2) - 2;
-        const dy = Math.round(v * (this.iHeight / this.verticalCount) + WHITE_SPACE / 2) - 2;
+  startAction() {
+    this.ctx.clearRect(0, 0, this.cWidth, this.cHeight);
 
-        const imageData = this.imageSources[h][v];
+    this.imageSources.forEach((imageData) => {
+      imageData.modifyImageData(this.opacity);
+      imageData.drawImage(this.ctx);
+    });
 
-        this.ctx.putImageData(imageData, dx, dy, 0, 0, unitWidth, unitHeight);
-      }
+    this.opacity -= 0.01;
+
+    if (this.opacity > 0) {
+      requestAnimationFrame(() => this.startAction());
     }
   }
 
@@ -94,18 +120,42 @@ class ImageScattered {
 class UnitImage {
   constructor(imageData) {
     this.imageData = imageData;
+    this.size = {
+      width: 0,
+      height: 0,
+    };
+    this.position = {
+      x: 0,
+      y: 0,
+    };
   }
 
   modifyImageData(opacity) {
-    const imageData = image.data;
+    const imageData = this.imageData.data;
 
     for (let i = 3; i < imageData.length; i += 4) {
       imageData[i] = 255 / (100 / (opacity * 100));
     }
 
-    const newImageData = new ImageData(imageData);
+    const newImageData = new ImageData(imageData, this.imageData.width, this.imageData.height);
 
     this.imageData = newImageData;
+  }
+
+  setImageSize(size) {
+    this.size = {
+      ...size,
+    };
+  }
+
+  setImagePosition(position) {
+    this.position = {
+      ...position,
+    };
+  }
+
+  drawImage(ctx) {
+    ctx.putImageData(this.imageData, this.position.x, this.position.y, 0, 0, this.size.width, this.size.height);
   }
 
   getImageData() {
